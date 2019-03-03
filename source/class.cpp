@@ -123,11 +123,34 @@ bool is_inherited_from_enable_shared_from_this(CXXRecordDecl const *C)
 
 bool is_field_assignable(FieldDecl const *f)
 {
-	if( RecordType const* r = dyn_cast<RecordType>( f->getType() ) ) {
+	RecordType const* r = dyn_cast<RecordType>( f->getType() );
+	if(r == nullptr)
+	{
+		if(auto* t = dyn_cast<TemplateSpecializationType>(f->getType()))
+		{
+			r = dyn_cast<RecordType>(t->desugar());
+		}
+	}
+
+	if( r ) {
 		if( CXXRecordDecl *C = cast<CXXRecordDecl>(r->getDecl() ) ) { // checking if this type has deleted operator=
 			for(auto m = C->method_begin(); m != C->method_end(); ++m) {
 				//if( m->getAccess() == AS_public  and  m->isCopyAssignmentOperator()  /*and  !m->doesThisDeclarationHaveABody()*/ and  m->isDeleted() ) return false;
 				if(  m->isCopyAssignmentOperator()  and  ( m->getAccess() != AS_public  or  m->isDeleted() ) ) return false;
+			}
+			for(auto d = C->decls_begin(); d != C->decls_end(); ++d) {
+				if(FieldDecl const *f = dyn_cast<FieldDecl>(*d) ) {
+					if( !is_field_assignable(f) ) return false;
+				}
+			}
+			for(auto b = C->bases_begin(); b!=C->bases_end(); ++b) {
+				if( auto rt = dyn_cast<RecordType>(b->getType().getCanonicalType().getTypePtr() ) ) {
+					if(CXXRecordDecl *R = cast<CXXRecordDecl>(rt->getDecl()) ) {
+						for(auto m = R->method_begin(); m != R->method_end(); ++m) {
+							if(  m->isCopyAssignmentOperator()  and  ( m->getAccess() != AS_public  or  m->isDeleted() ) ) return false;
+						}
+					}
+				}
 			}
 		}
 	}
@@ -138,7 +161,7 @@ bool is_field_assignable(FieldDecl const *f)
 /// check if generator can create binding
 bool is_bindable(FieldDecl *f)
 {
-	if( f->getType()->isAnyPointerType() or f->getType()->isReferenceType()  or  f->getType()->isArrayType() ) return false;
+	if( f->getType()->isAnyPointerType() or f->getType()->isReferenceType()  or  f->getType()->isArrayType() or f->isBitField() or f->isAnonymousStructOrUnion()) return false;
 
 	if( !is_field_assignable(f) ) return false;
 
@@ -488,6 +511,10 @@ string binding_public_data_members(CXXRecordDecl const *C)
 {
 	string c;
 
+	if(C->isUnion()) {
+		return c;
+	}
+
 	// binding protected data member that was made public in child class by 'using' declaration
 	for(auto d = C->decls_begin(); d != C->decls_end(); ++d) {
 		if(UsingDecl *u = dyn_cast<UsingDecl>(*d) ) {
@@ -743,7 +770,7 @@ string binding_public_member_functions(CXXRecordDecl const *C, bool callback_str
 						and  !is_const_overload(m) ) {
 						//m->dump();
 
-						c += bind_function("\tcl", m, context);
+						c += bind_function("\tcl", m, context, nullptr, C->isUnion());
 					}
 				}
 			}
@@ -758,7 +785,7 @@ string binding_public_member_functions(CXXRecordDecl const *C, bool callback_str
 			and  !is_const_overload(*m) ) {
 			//(*m)->dump();
 
-			c += bind_function("\tcl", *m, context);
+			c += bind_function("\tcl", *m, context, nullptr, C->isUnion());
 		}
 	}
 
