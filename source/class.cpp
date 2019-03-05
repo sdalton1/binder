@@ -63,7 +63,7 @@ string template_specialization(clang::CXXRecordDecl const *C)
 	return templ;
 }
 
-// generate class name that could be used in bindings code indcluding template specialization if any
+// generate class name that could be used in bindings code including template specialization if any
 string class_name(CXXRecordDecl const *C)
 {
 	string res = standard_name( C->getNameAsString() + template_specialization(C) );
@@ -161,7 +161,7 @@ bool is_field_assignable(FieldDecl const *f)
 /// check if generator can create binding
 bool is_bindable(FieldDecl *f)
 {
-	if( f->getType()->isAnyPointerType() or f->getType()->isReferenceType()  or  f->getType()->isArrayType() or f->isBitField() or f->isAnonymousStructOrUnion()) return false;
+	if( f->getType()->isAnyPointerType() or f->getType()->isReferenceType()  or  f->getType()->isArrayType() or f->isBitField()) return false;
 
 	if( !is_field_assignable(f) ) return false;
 
@@ -172,6 +172,8 @@ bool is_bindable(FieldDecl *f)
 // Generate bindings for class data member
 string bind_data_member(FieldDecl const *d, string const &class_qualified_name)
 {
+	if(d->isAnonymousStructOrUnion()) return "";
+
 	if( d->getType().isConstQualified() ) return ".def_readonly(\"{}\", &{}::{})"_format(d->getNameAsString(), class_qualified_name, d->getNameAsString());
 	else return ".def_readwrite(\"{}\", &{}::{})"_format(d->getNameAsString(), class_qualified_name, d->getNameAsString());
 }
